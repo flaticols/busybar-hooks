@@ -96,6 +96,55 @@ test_invalid_setting_is_ignored_quietly() {
   eq status "$STATUS" "0"
 }
 
+test_token_env_wins() {
+  export CLAUDE_PLUGIN_OPTION_TOKEN=plugin-token FAKE_KEYCHAIN=kc-token
+  hook done "$(payload s1)"
+  eq source "$(source_of 1)" "env"
+}
+
+test_token_plugin_before_keychain() {
+  unset BUSYBAR_TOKEN
+  export CLAUDE_PLUGIN_OPTION_TOKEN=plugin-token FAKE_KEYCHAIN=kc-token
+  hook done "$(payload s1)"
+  eq source "$(source_of 1)" "plugin"
+}
+
+test_token_keychain_last() {
+  unset BUSYBAR_TOKEN
+  export FAKE_KEYCHAIN=kc-token
+  hook done "$(payload s1)"
+  eq source "$(source_of 1)" "keychain"
+}
+
+test_no_token_does_nothing() {
+  unset BUSYBAR_TOKEN
+  hook done "$(payload s1)"
+  eq calls "$(ncalls)" "0"
+  eq stdout "$OUT" ""
+  eq status "$STATUS" "0"
+}
+
+test_test_command_draws_hello() {
+  hook test
+  eq title "$(q 1 '.elements[1].text')" "HELLO"
+  eq timeout "$(q 1 '.elements[1].timeout')" "10"
+  eq status "$STATUS" "0"
+}
+
+test_test_command_without_token_fails() {
+  unset BUSYBAR_TOKEN
+  hook test
+  eq status "$STATUS" "1"
+  eq calls "$(ncalls)" "0"
+}
+
+test_test_command_reports_failure() {
+  export BUSYBAR_DRY_RUN="$WORK/missing/calls"
+  hook test
+  eq status "$STATUS" "1"
+  eq stdout "$OUT" ""
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do
   CURRENT=$t
   setup

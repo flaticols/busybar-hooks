@@ -201,6 +201,25 @@ test_input_draws_amber_input_with_sound() {
   eq owner "$(cat "$XDG_STATE_HOME/busybar-hooks/owner")" "s1 input"
 }
 
+test_progress_draws_silently_with_counter_and_title() {
+  OUT=$(printf '%s' '{}' | bash "$SCRIPT" progress "3/12" "compose skill dirs")
+  STATUS=$?
+  eq status "$STATUS" "0"
+  eq stdout "$OUT" ""
+  eq route "$(route 1)" "POST display/draw"
+  eq counter "$(q 1 '.elements[1].text')" "3/12"
+  eq title "$(q 1 '.elements[2].text')" "compose skill dirs"
+  eq led "$(q 1 .led_notification_color)" "#4C9EFFFF"
+  eq calls "$(ncalls)" "1"
+}
+
+test_progress_requires_counter() {
+  OUT=$(printf '%s' '{}' | bash "$SCRIPT" progress 2>/dev/null)
+  STATUS=$?
+  eq status "$STATUS" "1"
+  eq calls "$(ncalls)" "0"
+}
+
 test_record_is_local_only() {
   hook record "$(payload s1 Bash '{"command":"ls"}')"
   eq calls "$(ncalls)" "0"

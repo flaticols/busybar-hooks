@@ -165,6 +165,11 @@ cmd_input() {
   draw input 'INPUT?' "$PROJECT" "$AMBER"
 }
 
+# progress N/M TITLE: show task progress. Silent; the Stop hook still owns end-of-turn.
+cmd_progress() {
+  draw progress "${1:?counter required}" "${2:-}" "#4C9EFFFF"
+}
+
 # The approved tool ran or the turn was interrupted: take down this session's alert only.
 cmd_cancel() {
   rm -f "$PENDING"
@@ -234,11 +239,12 @@ case ${1:-} in
   input) cmd_input ;;
   cancel) cmd_cancel ;;
   clear) cmd_clear ;;
+  progress) cmd_progress "${2:-}" "${3:-}" ;;
   codex-wait) cmd_codex_wait ;;
   login) cmd_login; exit $? ;;
   test) cmd_test; exit $? ;;
   *)
-    echo "usage: busybar.sh done|record|approve|input|cancel|clear|codex-wait|login|test" >&2
+    echo "usage: busybar.sh done|record|approve|input|cancel|clear|progress|codex-wait|login|test" >&2
     exit 64
     ;;
 esac

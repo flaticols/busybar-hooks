@@ -1,0 +1,12 @@
+{
+  "name": "busybar-hooks",
+  "interface": { "displayName": "BUSY Bar hooks" },
+  "plugins": [
+    {
+      "name": "busybar",
+      "source": { "source": "local", "path": "./plugins/busybar" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Productivity"
+    }
+  ]
+}

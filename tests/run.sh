@@ -289,6 +289,13 @@ test_claude_hooks_use_known_commands() {
   eq commands "$cmds" "approve cancel clear done input record "
 }
 
+test_codex_hooks_use_known_commands() {
+  local cmds
+  cmds=$(jq -r '.hooks | .. | .command? // empty' "$ROOT/plugins/busybar/.codex-plugin/plugin.json" \
+    | sed -E 's/.*busybar\.sh" ([a-z-]+).*/\1/' | sort -u | tr '\n' ' ')
+  eq commands "$cmds" "cancel clear codex-wait done "
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do
   CURRENT=$t
   setup

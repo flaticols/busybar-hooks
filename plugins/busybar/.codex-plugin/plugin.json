@@ -1,0 +1,38 @@
+{
+  "name": "busybar",
+  "description": "Show coding-agent status on a BUSY Bar: turn finished, approval needed.",
+  "version": "0.1.0",
+  "author": { "name": "flaticols", "url": "https://github.com/flaticols" },
+  "homepage": "https://github.com/flaticols/busybar-hooks",
+  "repository": "https://github.com/flaticols/busybar-hooks",
+  "license": "MIT",
+  "keywords": ["busy-bar", "hooks", "notifications", "codex"],
+  "hooks": {
+    "hooks": {
+      "Stop": [
+        { "hooks": [{ "type": "command", "command": "bash \"$PLUGIN_ROOT/skills/busybar/scripts/busybar.sh\" done || true", "timeout": 15 }] }
+      ],
+      "PermissionRequest": [
+        { "matcher": "", "hooks": [{ "type": "command", "command": "bash \"$PLUGIN_ROOT/skills/busybar/scripts/busybar.sh\" codex-wait || true", "timeout": 5 }] }
+      ],
+      "PostToolUse": [
+        { "matcher": "", "hooks": [{ "type": "command", "command": "bash \"$PLUGIN_ROOT/skills/busybar/scripts/busybar.sh\" cancel || true", "timeout": 15 }] }
+      ],
+      "Interrupt": [
+        { "hooks": [{ "type": "command", "command": "bash \"$PLUGIN_ROOT/skills/busybar/scripts/busybar.sh\" cancel || true", "timeout": 3 }] }
+      ],
+      "UserPromptSubmit": [
+        { "hooks": [{ "type": "command", "command": "bash \"$PLUGIN_ROOT/skills/busybar/scripts/busybar.sh\" clear || true", "timeout": 15 }] }
+      ]
+    }
+  },
+  "interface": {
+    "displayName": "BUSY Bar",
+    "shortDescription": "Agent status on your BUSY Bar.",
+    "longDescription": "Shows DONE when a Codex turn ends and an alert with a sound when Codex waits for your approval.",
+    "developerName": "flaticols",
+    "category": "Productivity",
+    "capabilities": ["Interactive"],
+    "websiteURL": "https://github.com/flaticols/busybar-hooks"
+  }
+}

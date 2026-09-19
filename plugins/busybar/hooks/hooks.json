@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" done", "async": true, "timeout": 30 }] }
+    ],
+    "PermissionRequest": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" record", "timeout": 5 }] }
+    ],
+    "Notification": [
+      { "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" approve", "async": true, "timeout": 30 }] },
+      { "matcher": "elicitation_dialog", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" input", "async": true, "timeout": 30 }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" input", "async": true, "timeout": 30 }] }
+    ],
+    "PostToolUse": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" cancel", "async": true, "timeout": 30 }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/skills/busybar/scripts/busybar.sh\" clear", "async": true, "timeout": 30 }] }
+    ]
+  }
+}

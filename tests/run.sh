@@ -282,6 +282,13 @@ test_codex_second_request_replaces_first() {
   eq latest "$(q 1 '.elements[2].text')" "npm publish"
 }
 
+test_claude_hooks_use_known_commands() {
+  local cmds
+  cmds=$(jq -r '.. | .command? // empty' "$ROOT/plugins/busybar/hooks/hooks.json" \
+    | sed -E 's/.*busybar\.sh" ([a-z-]+).*/\1/' | sort -u | tr '\n' ' ')
+  eq commands "$cmds" "approve cancel clear done input record "
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do
   CURRENT=$t
   setup

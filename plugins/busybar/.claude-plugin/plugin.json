@@ -1,0 +1,19 @@
+{
+  "name": "busybar",
+  "description": "Show coding-agent status on a BUSY Bar: turn finished, approval needed, question asked.",
+  "version": "0.1.0",
+  "author": { "name": "flaticols" },
+  "homepage": "https://github.com/flaticols/busybar-hooks",
+  "repository": "https://github.com/flaticols/busybar-hooks",
+  "license": "MIT",
+  "keywords": ["busy-bar", "hooks", "notifications", "status"],
+  "userConfig": {
+    "token": {
+      "type": "string",
+      "title": "BUSY Bar API token",
+      "description": "BAR-scope token from the BUSY app. Leave empty to use the macOS Keychain entry created by `busybar.sh login`.",
+      "sensitive": true,
+      "required": false
+    }
+  }
+}

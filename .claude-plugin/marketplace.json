@@ -1,0 +1,12 @@
+{
+  "name": "busybar-hooks",
+  "owner": { "name": "flaticols" },
+  "metadata": { "description": "Coding-agent status on a BUSY Bar" },
+  "plugins": [
+    {
+      "name": "busybar",
+      "description": "Show coding-agent status on a BUSY Bar: turn finished, approval needed, question asked.",
+      "source": "./plugins/busybar"
+    }
+  ]
+}

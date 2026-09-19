@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON
+        run: |
+          for f in .claude-plugin/marketplace.json .agents/plugins/marketplace.json \
+            plugins/busybar/.claude-plugin/plugin.json plugins/busybar/.codex-plugin/plugin.json \
+            plugins/busybar/hooks/hooks.json; do
+            jq -e . "$f" > /dev/null
+          done
+      - name: shellcheck
+        run: shellcheck plugins/busybar/skills/busybar/scripts/busybar.sh tests/run.sh
+      - name: Tests
+        run: bash tests/run.sh

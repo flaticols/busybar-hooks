@@ -14,6 +14,7 @@ STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/busybar-hooks
 GREEN='#3FB950FF'
 AMBER='#FFB000FF'
 SOUND=${BUSYBAR_SOUND:-calendar_event_starts}
+CODEX_DELAY=${BUSYBAR_CODEX_DELAY:-10}
 
 # Hook JSON -> {title, detail} for an approval alert. The detail names the program, file,
 # host or MCP tool only, never full command lines.
@@ -74,7 +75,7 @@ ICON='! XPM2
 # macOS Keychain. Fails when no token is configured.
 load_token() {
   TOKEN=${BUSYBAR_TOKEN:-}
-  TOKEN_SOURCE=env
+  TOKEN_SOURCE='env'
   if [ -z "$TOKEN" ]; then
     TOKEN=${CLAUDE_PLUGIN_OPTION_TOKEN:-}
     TOKEN_SOURCE=plugin
@@ -142,7 +143,7 @@ draw() {
 
 cmd_done() {
   rm -f "$PENDING"
-  draw done DONE "$PROJECT" "$GREEN"
+  draw 'done' DONE "$PROJECT" "$GREEN"
 }
 
 # record ID: save this request's summary for a later alert. Local only, returns at once.
@@ -176,6 +177,17 @@ cmd_clear() {
   case $(owner) in "$SESSION "*) clear_bar ;; esac
 }
 
+# Codex asks hooks before its auto-reviewer decides, so alert only if this request is
+# still pending after CODEX_DELAY seconds. Returns at once; the timer runs detached.
+cmd_codex_wait() {
+  local id="$$.$RANDOM"
+  record "$id" || return 0
+  (
+    sleep "$CODEX_DELAY"
+    [ "$(jq -r .id "$PENDING" 2>/dev/null)" = "$id" ] && cmd_approve
+  ) </dev/null >/dev/null 2>&1 &
+}
+
 # Stores the token in the macOS Keychain; `security` prompts for it twice without echo.
 cmd_login() {
   if ! command -v security >/dev/null 2>&1; then
@@ -194,7 +206,7 @@ cmd_test() {
     return 1
   fi
   TIMEOUT=10
-  if draw done HELLO busybar-hooks "$GREEN"; then
+  if draw 'done' HELLO busybar-hooks "$GREEN"; then
     echo "Sent (HTTP ${API_STATUS:-dry run}). Look at the bar."
   else
     echo "The bar did not accept the test message (HTTP ${API_STATUS:-none})." >&2
@@ -222,6 +234,7 @@ case ${1:-} in
   input) cmd_input ;;
   cancel) cmd_cancel ;;
   clear) cmd_clear ;;
+  codex-wait) cmd_codex_wait ;;
   login) cmd_login; exit $? ;;
   test) cmd_test; exit $? ;;
   *)

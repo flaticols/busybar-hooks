@@ -57,7 +57,7 @@ eq() {
 }
 
 test_done_draws_green_done_with_project() {
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq route "$(route 1)" "POST display/draw"
   eq app "$(q 1 .application_name)" "busybar-hooks"
   eq priority "$(q 1 .priority)" "100"
@@ -73,52 +73,52 @@ test_done_draws_green_done_with_project() {
 }
 
 test_done_project_name_edge_cases() {
-  hook done '{"session_id":"s1","cwd":"/home/user/my project/"}'
+  hook 'done' '{"session_id":"s1","cwd":"/home/user/my project/"}'
   eq trailing-slash "$(q 1 '.elements[2].text')" "my project"
-  hook done '{"session_id":"s1","cwd":"/home/user/проект"}'
+  hook 'done' '{"session_id":"s1","cwd":"/home/user/проект"}'
   eq non-ascii "$(q 2 '.elements[2].text')" "agent"
-  hook done 'not json'
+  hook 'done' 'not json'
   eq bad-json "$(q 3 '.elements[2].text')" "agent"
   eq bad-json-owner "$(cat "$XDG_STATE_HOME/busybar-hooks/owner")" "manual done"
 }
 
 test_settings_override_priority_and_timeout() {
   export BUSYBAR_PRIORITY=50 BUSYBAR_TIMEOUT=30
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq priority "$(q 1 .priority)" "50"
   eq timeout "$(q 1 '.elements[0].timeout')" "30"
 }
 
 test_invalid_setting_is_ignored_quietly() {
   export BUSYBAR_PRIORITY=high
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq calls "$(ncalls)" "0"
   eq status "$STATUS" "0"
 }
 
 test_token_env_wins() {
   export CLAUDE_PLUGIN_OPTION_TOKEN=plugin-token FAKE_KEYCHAIN=kc-token
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq source "$(source_of 1)" "env"
 }
 
 test_token_plugin_before_keychain() {
   unset BUSYBAR_TOKEN
   export CLAUDE_PLUGIN_OPTION_TOKEN=plugin-token FAKE_KEYCHAIN=kc-token
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq source "$(source_of 1)" "plugin"
 }
 
 test_token_keychain_last() {
   unset BUSYBAR_TOKEN
   export FAKE_KEYCHAIN=kc-token
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq source "$(source_of 1)" "keychain"
 }
 
 test_no_token_does_nothing() {
   unset BUSYBAR_TOKEN
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   eq calls "$(ncalls)" "0"
   eq stdout "$OUT" ""
   eq status "$STATUS" "0"
@@ -211,7 +211,7 @@ test_record_is_local_only() {
 test_session_id_cannot_escape_state_dir() {
   hook record '{"session_id":"../../escape","tool_name":"Bash","tool_input":{"command":"ls"}}'
   eq inside "$(ls -A "$XDG_STATE_HOME/busybar-hooks")" "....escape.pending"
-  eq outside "$(ls "$WORK" | tr '\n' ' ')" "bin calls state "
+  eq outside "$(cd "$WORK" && echo *)" "bin calls state"
 }
 
 test_cancel_clears_own_alert_only() {
@@ -225,13 +225,13 @@ test_cancel_clears_own_alert_only() {
 }
 
 test_cancel_leaves_done_alone() {
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   hook cancel "$(payload s1)"
   eq calls "$(ncalls)" "1"
 }
 
 test_clear_only_by_owner() {
-  hook done "$(payload s1)"
+  hook 'done' "$(payload s1)"
   hook clear "$(payload s2)"
   eq other-session "$(ncalls)" "1"
   hook clear "$(payload s1)"
@@ -240,7 +240,7 @@ test_clear_only_by_owner() {
 
 test_latest_session_wins() {
   hook approve "$(payload s1 Bash '{"command":"ls"}')"
-  hook done "$(payload s2)"
+  hook 'done' "$(payload s2)"
   hook cancel "$(payload s1)"
   eq stale-cancel "$(ncalls)" "3"
   hook clear "$(payload s2)"
@@ -254,6 +254,32 @@ test_cancel_and_clear_drop_pending() {
   hook record "$(payload s1 Bash '{"command":"ls"}')"
   hook clear "$(payload s1)"
   eq after-clear "$(ls -A "$XDG_STATE_HOME/busybar-hooks")" ""
+}
+
+test_codex_wait_alerts_after_delay() {
+  export BUSYBAR_CODEX_DELAY=1
+  hook codex-wait "$(payload s1 Bash '{"command":["bash","-lc","git push"]}')"
+  eq immediate "$(ncalls)" "0"
+  eq stdout "$OUT" ""
+  sleep 3
+  eq delayed "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "Bash?|git push"
+}
+
+test_codex_wait_cancelled_before_delay() {
+  export BUSYBAR_CODEX_DELAY=1
+  hook codex-wait "$(payload s1 Bash '{"command":"git push"}')"
+  hook cancel "$(payload s1)"
+  sleep 3
+  eq calls "$(ncalls)" "0"
+}
+
+test_codex_second_request_replaces_first() {
+  export BUSYBAR_CODEX_DELAY=1
+  hook codex-wait "$(payload s1 Bash '{"command":"git push"}')"
+  hook codex-wait "$(payload s1 Bash '{"command":"npm publish"}')"
+  sleep 3
+  eq one-alert "$(grep -c 'display/draw' "$BUSYBAR_DRY_RUN")" "1"
+  eq latest "$(q 1 '.elements[2].text')" "npm publish"
 }
 
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do

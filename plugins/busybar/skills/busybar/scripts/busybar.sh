@@ -106,6 +106,14 @@ set_owner() {
   mkdir -p "$STATE_DIR" && printf '%s %s\n' "$SESSION" "$1" > "$STATE_DIR/owner"
 }
 
+owner() {
+  cat "$STATE_DIR/owner" 2>/dev/null
+}
+
+clear_bar() {
+  api DELETE display/draw "{\"application_name\":\"$APP\"}" && rm -f "$STATE_DIR/owner"
+}
+
 play_sound() {
   [ "$SOUND" = off ] && return 0
   api POST audio/play "$(jq -nc --arg app "$APP" --arg s "shared/sounds/$SOUND.snd" \
@@ -156,6 +164,18 @@ cmd_input() {
   draw input 'INPUT?' "$PROJECT" "$AMBER"
 }
 
+# The approved tool ran or the turn was interrupted: take down this session's alert only.
+cmd_cancel() {
+  rm -f "$PENDING"
+  case $(owner) in "$SESSION approve" | "$SESSION input") clear_bar ;; esac
+}
+
+# The user sent a prompt: take down whatever this session put on the bar.
+cmd_clear() {
+  rm -f "$PENDING"
+  case $(owner) in "$SESSION "*) clear_bar ;; esac
+}
+
 # Stores the token in the macOS Keychain; `security` prompts for it twice without echo.
 cmd_login() {
   if ! command -v security >/dev/null 2>&1; then
@@ -200,6 +220,8 @@ case ${1:-} in
   record) record "$$.$RANDOM" ;;
   approve) cmd_approve ;;
   input) cmd_input ;;
+  cancel) cmd_cancel ;;
+  clear) cmd_clear ;;
   login) cmd_login; exit $? ;;
   test) cmd_test; exit $? ;;
   *)

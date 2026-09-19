@@ -214,6 +214,48 @@ test_session_id_cannot_escape_state_dir() {
   eq outside "$(ls "$WORK" | tr '\n' ' ')" "bin calls state "
 }
 
+test_cancel_clears_own_alert_only() {
+  hook approve "$(payload s1 Bash '{"command":"ls"}')"
+  hook cancel "$(payload s2)"
+  eq other-session "$(ncalls)" "2"
+  hook cancel "$(payload s1)"
+  eq own-session "$(route 3)" "DELETE display/draw"
+  eq body "$(q 3 .application_name)" "busybar-hooks"
+  eq owner-gone "$(ls -A "$XDG_STATE_HOME/busybar-hooks")" ""
+}
+
+test_cancel_leaves_done_alone() {
+  hook done "$(payload s1)"
+  hook cancel "$(payload s1)"
+  eq calls "$(ncalls)" "1"
+}
+
+test_clear_only_by_owner() {
+  hook done "$(payload s1)"
+  hook clear "$(payload s2)"
+  eq other-session "$(ncalls)" "1"
+  hook clear "$(payload s1)"
+  eq own-session "$(route 2)" "DELETE display/draw"
+}
+
+test_latest_session_wins() {
+  hook approve "$(payload s1 Bash '{"command":"ls"}')"
+  hook done "$(payload s2)"
+  hook cancel "$(payload s1)"
+  eq stale-cancel "$(ncalls)" "3"
+  hook clear "$(payload s2)"
+  eq owner-clear "$(route 4)" "DELETE display/draw"
+}
+
+test_cancel_and_clear_drop_pending() {
+  hook record "$(payload s1 Bash '{"command":"ls"}')"
+  hook cancel "$(payload s1)"
+  eq after-cancel "$(ls -A "$XDG_STATE_HOME/busybar-hooks")" ""
+  hook record "$(payload s1 Bash '{"command":"ls"}')"
+  hook clear "$(payload s1)"
+  eq after-clear "$(ls -A "$XDG_STATE_HOME/busybar-hooks")" ""
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do
   CURRENT=$t
   setup

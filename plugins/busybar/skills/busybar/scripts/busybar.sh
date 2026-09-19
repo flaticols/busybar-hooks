@@ -12,6 +12,41 @@ PRIORITY=${BUSYBAR_PRIORITY:-100}
 TIMEOUT=${BUSYBAR_TIMEOUT:-600}
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/busybar-hooks
 GREEN='#3FB950FF'
+AMBER='#FFB000FF'
+SOUND=${BUSYBAR_SOUND:-calendar_event_starts}
+
+# Hook JSON -> {title, detail} for an approval alert. The detail names the program, file,
+# host or MCP tool only, never full command lines.
+SUMMARY_JQ='
+def base: sub(".*/"; "");
+def clean: gsub("[^ -~]"; "") | .[:40];
+def shell:
+  (if type == "array" then
+     (if length >= 3 and (.[1] | test("^-l?c$")) then .[2] else join(" ") end)
+   else . end)
+  | split("\n")[0] | split("&&")[0] | split("||")[0] | split(";")[0] | split("|")[0]
+  | [splits("\\s+") | select(length > 0)]
+  | until(length == 0 or (.[0] | test("^[A-Za-z_][A-Za-z0-9_]*=") | not); .[1:])
+  | if length == 0 then ""
+    else (.[0] | base) + (if ((.[1] // "") | test("^[a-z][a-z0-9-]*$")) then " " + .[1] else "" end)
+    end;
+(.tool_name // "") as $t | (.tool_input // {}) as $in
+| if $t == "" then {title: "APPROVE?", detail: ""}
+  elif ($t | startswith("mcp__")) then
+    {title: "MCP?", detail: ($t | ltrimstr("mcp__") | split("__") | .[0] + " " + (.[1:] | join("__")))}
+  elif $t == "apply_patch" then
+    {title: "Patch?", detail: ((($in.command // "") | tostring
+      | capture("\\*\\*\\* (Add|Update|Delete) File: (?<p>[^\\n]+)") | .p | base) // "")}
+  elif $t == "Bash" then {title: "Bash?", detail: (($in.command // "") | shell)}
+  elif ($t == "Edit" or $t == "Write" or $t == "Read" or $t == "NotebookEdit") then
+    {title: (($t | .[:8]) + "?"), detail: (($in.file_path // $in.notebook_path // "") | base)}
+  elif $t == "WebFetch" then
+    {title: "WebFetch?", detail: ((($in.url // "")
+      | capture("^[A-Za-z][A-Za-z0-9+.-]*://(?<h>[^/:?#]+)") | .h) // "")}
+  else {title: (($t | .[:8]) + "?"), detail: ""}
+  end
+| .title |= clean | .detail |= clean
+'
 
 # 15x15 spark drawn left of the text.
 ICON='! XPM2
@@ -71,6 +106,12 @@ set_owner() {
   mkdir -p "$STATE_DIR" && printf '%s %s\n' "$SESSION" "$1" > "$STATE_DIR/owner"
 }
 
+play_sound() {
+  [ "$SOUND" = off ] && return 0
+  api POST audio/play "$(jq -nc --arg app "$APP" --arg s "shared/sounds/$SOUND.snd" \
+    '{application_name: $app, stock_path: $s}')"
+}
+
 # draw STATE TITLE DETAIL COLOR: replace what the bar shows and take ownership of it.
 # Fails when the bar did not accept the message.
 draw() {
@@ -88,10 +129,31 @@ draw() {
      ]}' 2>/dev/null) || return 1
   api POST display/draw "$body" || return 1
   set_owner "$1"
+  case $1 in approve|input) play_sound ;; esac
 }
 
 cmd_done() {
+  rm -f "$PENDING"
   draw done DONE "$PROJECT" "$GREEN"
+}
+
+# record ID: save this request's summary for a later alert. Local only, returns at once.
+record() {
+  mkdir -p "$STATE_DIR" || return 1
+  jq -c --arg id "$1" "$SUMMARY_JQ | .id = \$id" <<<"$INPUT" > "$PENDING.tmp" 2>/dev/null \
+    && mv "$PENDING.tmp" "$PENDING"
+}
+
+# Alert from the saved request, else from the tool fields in this payload, else generic.
+cmd_approve() {
+  local s
+  s=$(cat "$PENDING" 2>/dev/null)
+  [ -n "$s" ] || s=$(jq -c "$SUMMARY_JQ" <<<"$INPUT")
+  draw approve "$(jq -r .title <<<"$s")" "$(jq -r .detail <<<"$s")" "$AMBER"
+}
+
+cmd_input() {
+  draw input 'INPUT?' "$PROJECT" "$AMBER"
 }
 
 # Stores the token in the macOS Keychain; `security` prompts for it twice without echo.
@@ -131,9 +193,13 @@ SESSION=$(jq -r '.session_id // ""' <<<"$INPUT" | LC_ALL=C tr -cd 'A-Za-z0-9._-'
 [ -n "$SESSION" ] || SESSION=manual
 PROJECT=$(jq -r '.cwd // "" | rtrimstr("/") | sub(".*/"; "") | gsub("[^ -~]"; "")' <<<"$INPUT")
 [ -n "$PROJECT" ] || PROJECT=agent
+PENDING=$STATE_DIR/$SESSION.pending
 
 case ${1:-} in
   done) cmd_done ;;
+  record) record "$$.$RANDOM" ;;
+  approve) cmd_approve ;;
+  input) cmd_input ;;
   login) cmd_login; exit $? ;;
   test) cmd_test; exit $? ;;
   *)

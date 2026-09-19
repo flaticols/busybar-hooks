@@ -145,6 +145,75 @@ test_test_command_reports_failure() {
   eq stdout "$OUT" ""
 }
 
+# summary_of TOOL INPUT_JSON: record then approve in one session; prints "title|detail".
+summary_of() {
+  : > "$BUSYBAR_DRY_RUN"
+  hook record "$(payload s1 "$1" "$2")"
+  hook approve "$(payload s1)"
+  q 1 '.elements[1].text + "|" + .elements[2].text'
+}
+
+test_summary_rules() {
+  eq git "$(summary_of Bash '{"command":"git push origin main"}')" "Bash?|git push"
+  eq env-prefix "$(summary_of Bash '{"command":"FOO=1 BAR=2 npm test -- -v"}')" "Bash?|npm test"
+  eq chain "$(summary_of Bash '{"command":"cd /tmp && rm -rf build"}')" "Bash?|cd"
+  eq url-arg "$(summary_of Bash '{"command":"curl -s https://example.com/x?token=abc"}')" "Bash?|curl"
+  eq path "$(summary_of Bash '{"command":"/usr/local/bin/terraform apply -auto-approve"}')" "Bash?|terraform apply"
+  eq heredoc "$(summary_of Bash '{"command":"cat <<EOF > notes.txt\nsecret\nEOF"}')" "Bash?|cat"
+  eq codex-argv "$(summary_of Bash '{"command":["bash","-lc","git status --short"]}')" "Bash?|git status"
+  eq edit "$(summary_of Edit '{"file_path":"/home/user/my-project/src/main.go"}')" "Edit?|main.go"
+  eq notebook "$(summary_of NotebookEdit '{"notebook_path":"/home/user/n/a.ipynb"}')" "Notebook?|a.ipynb"
+  eq webfetch "$(summary_of WebFetch '{"url":"https://docs.example.com/a/b?q=1"}')" "WebFetch?|docs.example.com"
+  eq mcp "$(summary_of mcp__github__create_issue '{"title":"x"}')" "MCP?|github create_issue"
+  eq patch "$(summary_of apply_patch '{"command":"*** Begin Patch\n*** Update File: src/app.rs\n@@\n-a\n+b\n*** End Patch"}')" "Patch?|app.rs"
+  eq other "$(summary_of TodoWrite '{"todos":[]}')" "TodoWrit?| "
+  local long
+  long=$(summary_of Edit '{"file_path":"/x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt"}')
+  eq cap "${#long}" "46"
+}
+
+test_approve_falls_back_to_payload_then_generic() {
+  hook approve "$(payload s1 Bash '{"command":"make deploy"}')"
+  eq payload-tool "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "Bash?|make deploy"
+  hook approve '{"session_id":"s2"}'
+  eq generic "$(q 3 '.elements[1].text + "|" + .elements[2].text')" "APPROVE?| "
+}
+
+test_approve_plays_sound_and_takes_ownership() {
+  hook approve "$(payload s1 Bash '{"command":"ls"}')"
+  eq led "$(q 1 .led_notification_color)" "#FFB000FF"
+  eq sound-route "$(route 2)" "POST audio/play"
+  eq sound "$(q 2 .stock_path)" "shared/sounds/calendar_event_starts.snd"
+  eq owner "$(cat "$XDG_STATE_HOME/busybar-hooks/owner")" "s1 approve"
+}
+
+test_sound_off() {
+  export BUSYBAR_SOUND=off
+  hook approve "$(payload s1 Bash '{"command":"ls"}')"
+  eq calls "$(ncalls)" "1"
+}
+
+test_input_draws_amber_input_with_sound() {
+  hook input "$(payload s1)"
+  eq title "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "INPUT?|my-project"
+  eq led "$(q 1 .led_notification_color)" "#FFB000FF"
+  eq sound-route "$(route 2)" "POST audio/play"
+  eq owner "$(cat "$XDG_STATE_HOME/busybar-hooks/owner")" "s1 input"
+}
+
+test_record_is_local_only() {
+  hook record "$(payload s1 Bash '{"command":"ls"}')"
+  eq calls "$(ncalls)" "0"
+  eq stdout "$OUT" ""
+  eq pending "$(jq -r .detail "$XDG_STATE_HOME/busybar-hooks/s1.pending")" "ls"
+}
+
+test_session_id_cannot_escape_state_dir() {
+  hook record '{"session_id":"../../escape","tool_name":"Bash","tool_input":{"command":"ls"}}'
+  eq inside "$(ls -A "$XDG_STATE_HOME/busybar-hooks")" "....escape.pending"
+  eq outside "$(ls "$WORK" | tr '\n' ' ')" "bin calls state "
+}
+
 for t in $(declare -F | awk '{print $3}' | grep '^test_'); do
   CURRENT=$t
   setup

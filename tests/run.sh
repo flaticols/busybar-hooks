@@ -218,7 +218,7 @@ test_progress_draws_silently_with_counter_and_title() {
   eq route "$(route 1)" "POST display/draw"
   eq counter "$(q 1 '.elements[1].text')" "3/12"
   eq title "$(q 1 '.elements[2].text')" "compose skill dirs"
-  eq led "$(q 1 .led_notification_color)" "#FFFFFFFF"
+  eq led "$(q 1 .led_notification_color)" "#4C9EFFFF"
   eq calls "$(ncalls)" "1"
 }
 
@@ -237,6 +237,50 @@ test_agent_prefixes() {
   : > "$BUSYBAR_DRY_RUN"
   hook input "$(payload s1)" claude
   eq bare-prefix "$(q 1 '.elements[1].text')" "CLAUDE  INPUT?"
+}
+
+# A caption is not an agent name. `task-done deploy` used to resolve the agent as
+# "deploy" and load icons/deploy.xpm2 from a word that was only ever a label.
+test_agent_argument_only_on_approve_and_input() {
+  mkdir -p "$WORK/icons"
+  printf '%s\n' 'deploy-icon-marker' > "$WORK/icons/deploy.xpm2"
+  export BUSYBAR_ICON_DIR="$WORK/icons"
+  hook task-done "$(payload s1)" deploy
+  eq icon-unchanged "$(q 1 '.elements[0].data' | head -c 6)" "! XPM2"
+  eq detail "$(q 1 '.elements[2].text')" "deploy"
+  unset BUSYBAR_ICON_DIR
+  rm -f "$WORK/icons/deploy.xpm2"
+}
+
+# The scrolling line falls back to the session name, never to the raw session id.
+test_blank_caption_falls_back_to_session_name() {
+  export BUSYBAR_SESSION=named-session
+  hook task-done "$(payload s1)" "   "
+  eq task-done-detail "$(q 1 '.elements[2].text')" "named-session"
+  : > "$BUSYBAR_DRY_RUN"
+  hook progress "$(payload s1)" "2/5" "   "
+  eq progress-detail "$(q 1 '.elements[2].text')" "named-session"
+  unset BUSYBAR_SESSION
+}
+
+# `cancel` runs from PostToolUse after every tool call and shows no name, so it must not
+# pay for one: an agtermctl that fails the test if called proves the path stays cold.
+test_cancel_does_not_resolve_a_session_name() {
+  export AGTERM_SESSION_ID=term-1
+  cat > "$WORK/bin/agtermctl" <<'EOF'
+#!/bin/sh
+touch "$AGTERM_CALLED"
+printf '%s\n' '{"result":{"tree":{"workspaces":[{"sessions":[{"id":"term-1","name":"term-session"}]}]}}}'
+EOF
+  chmod +x "$WORK/bin/agtermctl"
+  export AGTERM_CALLED=$WORK/agtermctl-called
+  rm -f "$AGTERM_CALLED"
+  hook cancel "$(payload s1)"
+  eq cold "$([ -e "$AGTERM_CALLED" ] && echo called || echo cold)" "cold"
+  rm -f "$AGTERM_CALLED"
+  hook input "$(payload s1)"
+  eq warm "$([ -e "$AGTERM_CALLED" ] && echo called || echo cold)" "called"
+  unset AGTERM_SESSION_ID AGTERM_CALLED
 }
 
 test_session_name_fallback_chain() {
@@ -289,7 +333,7 @@ test_progress_and_task_done() {
   eq progress-route "$(route 1)" "POST display/draw"
   eq progress-title "$(q 1 '.elements[1].text')" "3/12"
   eq progress-detail "$(q 1 '.elements[2].text')" "compose skill dirs"
-  eq progress-color "$(q 1 '.led_notification_color')" "#FFFFFFFF"
+  eq progress-color "$(q 1 '.led_notification_color')" "#4C9EFFFF"
   eq progress-silent "$(ncalls)" "1"
 
   hook task-done '{}' 'probe task'

@@ -15,7 +15,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ICON_DIR=${BUSYBAR_ICON_DIR:-$SCRIPT_DIR/../icons}
 GREEN='#3FB950FF'
 AMBER='#FFB000FF'
-WHITE='#FFFFFFFF'
+PROGRESS='#4C9EFFFF'
 SOUND=${BUSYBAR_SOUND:-calendar_event_starts}
 CODEX_DELAY=${BUSYBAR_CODEX_DELAY:-10}
 
@@ -78,12 +78,35 @@ clean_text() {
   printf '%s' "$1" | LC_ALL=C tr -cd ' -~'
 }
 
+# The scrolling line's label, resolved only when a verb actually draws one. `cancel` runs
+# from PostToolUse after every tool call and `clear` from every prompt; neither shows a
+# name, so an agtermctl round trip plus a jq on that path was pure cost. agtermctl is
+# absent for most users of this plugin, so failing to find it falls through rather than
+# erroring.
+session_name() {
+  local name=${BUSYBAR_SESSION:-}
+  if [ -z "$name" ] && [ -n "${AGTERM_SESSION_ID:-}" ] && command -v agtermctl >/dev/null 2>&1; then
+    name=$(agtermctl tree --json 2>/dev/null | jq -r --arg id "$AGTERM_SESSION_ID" \
+      '.result.tree.workspaces[]?.sessions[]? | select(.id == $id) | .name // empty' 2>/dev/null)
+  fi
+  name=$(clean_text "$name")
+  [ -n "$name" ] || name=$PROJECT
+  printf '%s' "$name"
+}
+
+# Only `approve` and `input` document a second argument naming the agent. Reading $2
+# for every verb made `task-done deploy` resolve the agent as "deploy" and silently
+# pick icons/deploy.xpm2 from a word that was only ever a caption.
 resolve_agent() {
   AGENT_NAME=${BUSYBAR_AGENT:-}
   if [ -z "$AGENT_NAME" ] && [ "$#" -ge 2 ]; then
-    case $2 in
-      ''|*[![:alnum:]_-]*) ;;
-      *) AGENT_NAME=$2 ;;
+    case ${1:-} in
+      approve|input)
+        case $2 in
+          ''|*[![:alnum:]_-]*) ;;
+          *) AGENT_NAME=$2 ;;
+        esac
+        ;;
     esac
   fi
   if [ -z "$AGENT_NAME" ] && environment_has_prefix CLAUDE_; then
@@ -109,9 +132,11 @@ environment_has_prefix() {
   return 1
 }
 
+# Titles here are short labels — INPUT?, Bash?, WebFetch? — with the specifics on the
+# detail line, so the agent prefix fits. It is not truncated: cutting at 16 took the "?"
+# off "CLAUDE  WebFetch?" and told the user less than the untruncated label does.
 agent_title() {
-  local title="${AGENT_LABEL}  $1"
-  printf '%s' "${title:0:16}"
+  printf '%s' "${AGENT_LABEL}  $1"
 }
 
 # Sets TOKEN and TOKEN_SOURCE: BUSYBAR_TOKEN, then the Claude plugin setting, then the
@@ -206,24 +231,30 @@ cmd_approve() {
 }
 
 cmd_input() {
-  draw input "$(agent_title 'INPUT?')" "$SESSION_NAME" "$AMBER"
+  draw input "$(agent_title 'INPUT?')" "$(session_name)" "$AMBER"
 }
 
 cmd_task_done() {
-  local detail=${2:-$SESSION_NAME}
-  detail=$(clean_text "$detail")
-  [ -n "$detail" ] || detail=$SESSION
+  local detail
+  detail=$(clean_text "${2:-}")
+  # Spaces survive clean_text, so a caption of blanks is empty as far as the display is
+  # concerned and takes the same fallback an absent one does.
+  case $detail in *[![:space:]]*) ;; *) detail=$(session_name) ;; esac
   rm -f "$PENDING"
   draw task-done DONE "$detail" "$GREEN"
 }
 
 cmd_progress() {
-  local counter=${2:?counter required} detail=${3:-$SESSION_NAME}
-  counter=$(clean_text "$counter")
-  detail=$(clean_text "$detail")
+  local counter detail
+  if [ -z "${2:-}" ]; then
+    echo "usage: busybar.sh progress <n/m> [title]" >&2
+    exit 1
+  fi
+  counter=$(clean_text "$2")
+  detail=$(clean_text "${3:-}")
   [ -n "$counter" ] || counter=0/0
-  [ -n "$detail" ] || detail=$SESSION
-  draw progress "$counter" "$detail" "$WHITE"
+  case $detail in *[![:space:]]*) ;; *) detail=$(session_name) ;; esac
+  draw progress "$counter" "$detail" "$PROGRESS"
 }
 
 # The approved tool ran or the turn was interrupted: take down this session's alert only.
@@ -287,14 +318,6 @@ SESSION=$(jq -r '.session_id // ""' <<<"$INPUT" | LC_ALL=C tr -cd 'A-Za-z0-9._-'
 [ -n "$SESSION" ] || SESSION=manual
 PROJECT=$(jq -r '.cwd // "" | rtrimstr("/") | sub(".*/"; "") | gsub("[^ -~]"; "")' <<<"$INPUT")
 [ -n "$PROJECT" ] || PROJECT=agent
-if [ -z "${BUSYBAR_SESSION:-}" ] && [ -n "${AGTERM_SESSION_ID:-}" ] && command -v agtermctl >/dev/null 2>&1; then
-  SESSION_NAME=$(agtermctl tree --json 2>/dev/null | jq -r --arg id "$AGTERM_SESSION_ID" \
-    '.result.tree.workspaces[]?.sessions[]? | select(.id == $id) | .name // empty' 2>/dev/null)
-else
-  SESSION_NAME=${BUSYBAR_SESSION:-}
-fi
-SESSION_NAME=$(clean_text "${SESSION_NAME:-}")
-[ -n "$SESSION_NAME" ] || SESSION_NAME=$PROJECT
 ICON_FILE=$ICON_DIR/$AGENT_KEY.xpm2
 if [ -f "$ICON_FILE" ]; then
   ICON=$(cat "$ICON_FILE")
@@ -314,7 +337,7 @@ case ${1:-} in
   login) cmd_login; exit $? ;;
   test) cmd_test; exit $? ;;
   *)
-    echo "usage: busybar.sh done|record|approve|input|cancel|clear|progress|codex-wait|login|test" >&2
+    echo "usage: busybar.sh done|record|approve|input|task-done|progress|cancel|clear|codex-wait|login|test" >&2
     exit 64
     ;;
 esac

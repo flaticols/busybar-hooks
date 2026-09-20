@@ -12,7 +12,7 @@ description: Set up and test BUSY Bar status hooks for coding agents, or wire th
 | turn finished | green `DONE` and the project name | no |
 | approval needed | amber `Bash?`, `Edit?`, … and the program or file name | yes |
 | question asked | amber `INPUT?` and the project name | yes |
-| task progress | white `N/M` and the task title | no |
+| task progress | blue `N/M` and the task title | no |
 | task finished | green `DONE` and the supplied task name | no |
 
 ## Custom icons
@@ -34,7 +34,7 @@ coloured pixel; adding `<agent>.xpm2` makes the icon available without changing 
 script.
 
 `task-done <text>` draws a silent green completion message, and `progress <N/M> <text>`
-draws a silent white progress message. The existing `done` command remains unchanged.
+draws a silent blue progress message. The existing `done` command remains unchanged.
 
 ## Token
 

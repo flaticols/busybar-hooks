@@ -11,8 +11,11 @@ KEYCHAIN_SERVICE=busybar-hooks
 PRIORITY=${BUSYBAR_PRIORITY:-100}
 TIMEOUT=${BUSYBAR_TIMEOUT:-600}
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/busybar-hooks
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ICON_DIR=${BUSYBAR_ICON_DIR:-$SCRIPT_DIR/../icons}
 GREEN='#3FB950FF'
 AMBER='#FFB000FF'
+WHITE='#FFFFFFFF'
 SOUND=${BUSYBAR_SOUND:-calendar_event_starts}
 CODEX_DELAY=${BUSYBAR_CODEX_DELAY:-10}
 
@@ -70,6 +73,46 @@ ICON='! XPM2
 .......#.......
 ...............
 '
+
+clean_text() {
+  printf '%s' "$1" | LC_ALL=C tr -cd ' -~'
+}
+
+resolve_agent() {
+  AGENT_NAME=${BUSYBAR_AGENT:-}
+  if [ -z "$AGENT_NAME" ] && [ "$#" -ge 2 ]; then
+    case $2 in
+      ''|*[![:alnum:]_-]*) ;;
+      *) AGENT_NAME=$2 ;;
+    esac
+  fi
+  if [ -z "$AGENT_NAME" ] && environment_has_prefix CLAUDE_; then
+    AGENT_NAME=claude
+  fi
+  if [ -z "$AGENT_NAME" ] && environment_has_prefix CODEX_; then
+    AGENT_NAME=codex
+  fi
+  AGENT_NAME=$(clean_text "${AGENT_NAME:-agent}")
+  [ -n "$AGENT_NAME" ] || AGENT_NAME=agent
+  AGENT_KEY=$(printf '%s' "$AGENT_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd 'a-z0-9_-')
+  [ -n "$AGENT_KEY" ] || AGENT_KEY=agent
+  AGENT_LABEL=$(printf '%s' "$AGENT_NAME" | LC_ALL=C tr '[:lower:]' '[:upper:]')
+}
+
+environment_has_prefix() {
+  local prefix=$1 name
+  while IFS= read -r name; do
+    case $name in
+      "$prefix"*) return 0 ;;
+    esac
+  done < <(compgen -e)
+  return 1
+}
+
+agent_title() {
+  local title="${AGENT_LABEL}  $1"
+  printf '%s' "${title:0:16}"
+}
 
 # Sets TOKEN and TOKEN_SOURCE: BUSYBAR_TOKEN, then the Claude plugin setting, then the
 # macOS Keychain. Fails when no token is configured.
@@ -155,19 +198,32 @@ record() {
 
 # Alert from the saved request, else from the tool fields in this payload, else generic.
 cmd_approve() {
-  local s
+  local s title
   s=$(cat "$PENDING" 2>/dev/null)
   [ -n "$s" ] || s=$(jq -c "$SUMMARY_JQ" <<<"$INPUT")
-  draw approve "$(jq -r .title <<<"$s")" "$(jq -r .detail <<<"$s")" "$AMBER"
+  title=$(jq -r .title <<<"$s")
+  draw approve "$(agent_title "$title")" "$(jq -r .detail <<<"$s")" "$AMBER"
 }
 
 cmd_input() {
-  draw input 'INPUT?' "$PROJECT" "$AMBER"
+  draw input "$(agent_title 'INPUT?')" "$SESSION_NAME" "$AMBER"
 }
 
-# progress N/M TITLE: show task progress. Silent; the Stop hook still owns end-of-turn.
+cmd_task_done() {
+  local detail=${2:-$SESSION_NAME}
+  detail=$(clean_text "$detail")
+  [ -n "$detail" ] || detail=$SESSION
+  rm -f "$PENDING"
+  draw task-done DONE "$detail" "$GREEN"
+}
+
 cmd_progress() {
-  draw progress "${1:?counter required}" "${2:-}" "#4C9EFFFF"
+  local counter=${2:?counter required} detail=${3:-$SESSION_NAME}
+  counter=$(clean_text "$counter")
+  detail=$(clean_text "$detail")
+  [ -n "$counter" ] || counter=0/0
+  [ -n "$detail" ] || detail=$SESSION
+  draw progress "$counter" "$detail" "$WHITE"
 }
 
 # The approved tool ran or the turn was interrupted: take down this session's alert only.
@@ -226,10 +282,23 @@ INPUT=
 if [ -z "$INPUT" ] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$INPUT"; then
   INPUT='{}'
 fi
+resolve_agent "$@"
 SESSION=$(jq -r '.session_id // ""' <<<"$INPUT" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
 [ -n "$SESSION" ] || SESSION=manual
 PROJECT=$(jq -r '.cwd // "" | rtrimstr("/") | sub(".*/"; "") | gsub("[^ -~]"; "")' <<<"$INPUT")
 [ -n "$PROJECT" ] || PROJECT=agent
+if [ -z "${BUSYBAR_SESSION:-}" ] && [ -n "${AGTERM_SESSION_ID:-}" ] && command -v agtermctl >/dev/null 2>&1; then
+  SESSION_NAME=$(agtermctl tree --json 2>/dev/null | jq -r --arg id "$AGTERM_SESSION_ID" \
+    '.result.tree.workspaces[]?.sessions[]? | select(.id == $id) | .name // empty' 2>/dev/null)
+else
+  SESSION_NAME=${BUSYBAR_SESSION:-}
+fi
+SESSION_NAME=$(clean_text "${SESSION_NAME:-}")
+[ -n "$SESSION_NAME" ] || SESSION_NAME=$PROJECT
+ICON_FILE=$ICON_DIR/$AGENT_KEY.xpm2
+if [ -f "$ICON_FILE" ]; then
+  ICON=$(cat "$ICON_FILE")
+fi
 PENDING=$STATE_DIR/$SESSION.pending
 
 case ${1:-} in
@@ -237,9 +306,10 @@ case ${1:-} in
   record) record "$$.$RANDOM" ;;
   approve) cmd_approve ;;
   input) cmd_input ;;
+  task-done) cmd_task_done "$@" ;;
+  progress) cmd_progress "$@" ;;
   cancel) cmd_cancel ;;
   clear) cmd_clear ;;
-  progress) cmd_progress "${2:-}" "${3:-}" ;;
   codex-wait) cmd_codex_wait ;;
   login) cmd_login; exit $? ;;
   test) cmd_test; exit $? ;;

@@ -12,7 +12,29 @@ description: Set up and test BUSY Bar status hooks for coding agents, or wire th
 | turn finished | green `DONE` and the project name | no |
 | approval needed | amber `Bash?`, `Edit?`, … and the program or file name | yes |
 | question asked | amber `INPUT?` and the project name | yes |
-| task progress | blue `N/M` and the task title | no |
+| task progress | white `N/M` and the task title | no |
+| task finished | green `DONE` and the supplied task name | no |
+
+## Custom icons
+
+The script looks for `${BUSYBAR_ICON_DIR:-<skill-dir>/icons}/<agent>.xpm2` and uses the
+embedded Claude spark when the file is absent. An icon is a 15x15 XPM2 bitmap with two
+colour definitions and one character per pixel:
+
+```text
+! XPM2
+15 15 2 1
+. c none
+# c #2F80ED
+...............
+```
+
+Use 15 pixel rows after the colour definitions. `.` is transparent and `#` is the
+coloured pixel; adding `<agent>.xpm2` makes the icon available without changing the
+script.
+
+`task-done <text>` draws a silent green completion message, and `progress <N/M> <text>`
+draws a silent white progress message. The existing `done` command remains unchanged.
 
 ## Token
 

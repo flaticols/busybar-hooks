@@ -22,16 +22,25 @@ fi
 exit 44
 EOF
   chmod +x "$WORK/bin/security"
-  unset CLAUDE_PLUGIN_OPTION_TOKEN FAKE_KEYCHAIN BUSYBAR_SOUND BUSYBAR_PRIORITY BUSYBAR_TIMEOUT BUSYBAR_CODEX_DELAY
+  for _agent_env in ${!CLAUDE_@} ${!CODEX_@}; do
+    unset "$_agent_env"
+  done
+  unset CLAUDE_PLUGIN_OPTION_TOKEN FAKE_KEYCHAIN BUSYBAR_AGENT BUSYBAR_SESSION AGTERM_SESSION_ID BUSYBAR_ICON_DIR BUSYBAR_SOUND BUSYBAR_PRIORITY BUSYBAR_TIMEOUT BUSYBAR_CODEX_DELAY
   export PATH="$WORK/bin:$ORIG_PATH" XDG_STATE_HOME="$WORK/state" BUSYBAR_DRY_RUN="$WORK/calls" BUSYBAR_TOKEN=env-token
   : > "$BUSYBAR_DRY_RUN"
 }
 
 # hook CMD [JSON]: run the script the way an agent does. Sets OUT (stdout) and STATUS.
 hook() {
+  local command=$1
   local in='{}'
   [ $# -ge 2 ] && in=$2
-  OUT=$(printf '%s' "$in" | bash "$SCRIPT" "$1")
+  if [ $# -ge 2 ]; then
+    shift 2
+  else
+    shift
+  fi
+  OUT=$(printf '%s' "$in" | bash "$SCRIPT" "$command" "$@")
   STATUS=$?
 }
 
@@ -154,29 +163,29 @@ summary_of() {
 }
 
 test_summary_rules() {
-  eq git "$(summary_of Bash '{"command":"git push origin main"}')" "Bash?|git push"
-  eq env-prefix "$(summary_of Bash '{"command":"FOO=1 BAR=2 npm test -- -v"}')" "Bash?|npm test"
-  eq chain "$(summary_of Bash '{"command":"cd /tmp && rm -rf build"}')" "Bash?|cd"
-  eq url-arg "$(summary_of Bash '{"command":"curl -s https://example.com/x?token=abc"}')" "Bash?|curl"
-  eq path "$(summary_of Bash '{"command":"/usr/local/bin/terraform apply -auto-approve"}')" "Bash?|terraform apply"
-  eq heredoc "$(summary_of Bash '{"command":"cat <<EOF > notes.txt\nsecret\nEOF"}')" "Bash?|cat"
-  eq codex-argv "$(summary_of Bash '{"command":["bash","-lc","git status --short"]}')" "Bash?|git status"
-  eq edit "$(summary_of Edit '{"file_path":"/home/user/my-project/src/main.go"}')" "Edit?|main.go"
-  eq notebook "$(summary_of NotebookEdit '{"notebook_path":"/home/user/n/a.ipynb"}')" "Notebook?|a.ipynb"
-  eq webfetch "$(summary_of WebFetch '{"url":"https://docs.example.com/a/b?q=1"}')" "WebFetch?|docs.example.com"
-  eq mcp "$(summary_of mcp__github__create_issue '{"title":"x"}')" "MCP?|github create_issue"
-  eq patch "$(summary_of apply_patch '{"command":"*** Begin Patch\n*** Update File: src/app.rs\n@@\n-a\n+b\n*** End Patch"}')" "Patch?|app.rs"
-  eq other "$(summary_of TodoWrite '{"todos":[]}')" "TodoWrit?| "
+  eq git "$(summary_of Bash '{"command":"git push origin main"}')" "AGENT  Bash?|git push"
+  eq env-prefix "$(summary_of Bash '{"command":"FOO=1 BAR=2 npm test -- -v"}')" "AGENT  Bash?|npm test"
+  eq chain "$(summary_of Bash '{"command":"cd /tmp && rm -rf build"}')" "AGENT  Bash?|cd"
+  eq url-arg "$(summary_of Bash '{"command":"curl -s https://example.com/x?token=abc"}')" "AGENT  Bash?|curl"
+  eq path "$(summary_of Bash '{"command":"/usr/local/bin/terraform apply -auto-approve"}')" "AGENT  Bash?|terraform apply"
+  eq heredoc "$(summary_of Bash '{"command":"cat <<EOF > notes.txt\nsecret\nEOF"}')" "AGENT  Bash?|cat"
+  eq codex-argv "$(summary_of Bash '{"command":["bash","-lc","git status --short"]}')" "AGENT  Bash?|git status"
+  eq edit "$(summary_of Edit '{"file_path":"/home/user/my-project/src/main.go"}')" "AGENT  Edit?|main.go"
+  eq notebook "$(summary_of NotebookEdit '{"notebook_path":"/home/user/n/a.ipynb"}')" "AGENT  Notebook?|a.ipynb"
+  eq webfetch "$(summary_of WebFetch '{"url":"https://docs.example.com/a/b?q=1"}')" "AGENT  WebFetch?|docs.example.com"
+  eq mcp "$(summary_of mcp__github__create_issue '{"title":"x"}')" "AGENT  MCP?|github create_issue"
+  eq patch "$(summary_of apply_patch '{"command":"*** Begin Patch\n*** Update File: src/app.rs\n@@\n-a\n+b\n*** End Patch"}')" "AGENT  Patch?|app.rs"
+  eq other "$(summary_of TodoWrite '{"todos":[]}')" "AGENT  TodoWrit?| "
   local long
   long=$(summary_of Edit '{"file_path":"/x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt"}')
-  eq cap "${#long}" "46"
+  eq cap "${#long}" "53"
 }
 
 test_approve_falls_back_to_payload_then_generic() {
   hook approve "$(payload s1 Bash '{"command":"make deploy"}')"
-  eq payload-tool "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "Bash?|make deploy"
+  eq payload-tool "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "AGENT  Bash?|make deploy"
   hook approve '{"session_id":"s2"}'
-  eq generic "$(q 3 '.elements[1].text + "|" + .elements[2].text')" "APPROVE?| "
+  eq generic "$(q 3 '.elements[1].text + "|" + .elements[2].text')" "AGENT  APPROVE?| "
 }
 
 test_approve_plays_sound_and_takes_ownership() {
@@ -195,7 +204,7 @@ test_sound_off() {
 
 test_input_draws_amber_input_with_sound() {
   hook input "$(payload s1)"
-  eq title "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "INPUT?|my-project"
+  eq title "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "AGENT  INPUT?|my-project"
   eq led "$(q 1 .led_notification_color)" "#FFB000FF"
   eq sound-route "$(route 2)" "POST audio/play"
   eq owner "$(cat "$XDG_STATE_HOME/busybar-hooks/owner")" "s1 input"
@@ -209,7 +218,7 @@ test_progress_draws_silently_with_counter_and_title() {
   eq route "$(route 1)" "POST display/draw"
   eq counter "$(q 1 '.elements[1].text')" "3/12"
   eq title "$(q 1 '.elements[2].text')" "compose skill dirs"
-  eq led "$(q 1 .led_notification_color)" "#4C9EFFFF"
+  eq led "$(q 1 .led_notification_color)" "#FFFFFFFF"
   eq calls "$(ncalls)" "1"
 }
 
@@ -220,6 +229,75 @@ test_progress_requires_counter() {
   eq calls "$(ncalls)" "0"
 }
 
+test_agent_prefixes() {
+  export BUSYBAR_AGENT=codex
+  hook approve "$(payload s1 Bash '{"command":"ls"}')"
+  eq env-prefix "$(q 1 '.elements[1].text')" "CODEX  Bash?"
+  unset BUSYBAR_AGENT
+  : > "$BUSYBAR_DRY_RUN"
+  hook input "$(payload s1)" claude
+  eq bare-prefix "$(q 1 '.elements[1].text')" "CLAUDE  INPUT?"
+}
+
+test_session_name_fallback_chain() {
+  export BUSYBAR_SESSION=explicit-session
+  hook input "$(payload s1)"
+  eq override "$(q 1 '.elements[2].text')" "explicit-session"
+
+  unset BUSYBAR_SESSION
+  : > "$BUSYBAR_DRY_RUN"
+  cat > "$WORK/bin/agtermctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' '{"result":{"tree":{"workspaces":[{"sessions":[{"id":"term-1","name":"term-session"}]}]}}}'
+EOF
+  chmod +x "$WORK/bin/agtermctl"
+  export AGTERM_SESSION_ID=term-1
+  hook input "$(payload s1)"
+  eq agterm "$(q 1 '.elements[2].text')" "term-session"
+
+  rm -f "$WORK/bin/agtermctl"
+  : > "$BUSYBAR_DRY_RUN"
+  local saved_path=$PATH
+  local no_agterm="$WORK/no-agterm-bin"
+  mkdir -p "$no_agterm"
+  for tool in bash jq dirname tr cat mkdir; do
+    ln -s "$(command -v "$tool")" "$no_agterm/$tool"
+  done
+  ln -s "$WORK/bin/security" "$no_agterm/security"
+  PATH=$no_agterm
+  hook input "$(payload s1)"
+  PATH=$saved_path
+  eq agterm-absent-fallback "$(q 1 '.elements[2].text')" "my-project"
+}
+
+test_icon_selection_and_embedded_fallback() {
+  local icons="$WORK/icons"
+  mkdir -p "$icons"
+  printf '%s\n' 'custom-codex-icon' > "$icons/codex.xpm2"
+  export BUSYBAR_ICON_DIR="$icons" BUSYBAR_AGENT=codex
+  hook progress '{}' '1/2' 'first step'
+  eq custom-icon "$(q 1 '.elements[0].data')" "custom-codex-icon"
+  rm -f "$BUSYBAR_DRY_RUN"
+  : > "$BUSYBAR_DRY_RUN"
+  rm -f "$icons/codex.xpm2"
+  hook progress '{}' '2/2' 'second step'
+  eq embedded-default "$(q 1 '.elements[0].data | startswith("! XPM2\n15 15 2 1")')" "true"
+}
+
+test_progress_and_task_done() {
+  hook progress '{}' '3/12' 'compose skill dirs'
+  eq progress-route "$(route 1)" "POST display/draw"
+  eq progress-title "$(q 1 '.elements[1].text')" "3/12"
+  eq progress-detail "$(q 1 '.elements[2].text')" "compose skill dirs"
+  eq progress-color "$(q 1 '.led_notification_color')" "#FFFFFFFF"
+  eq progress-silent "$(ncalls)" "1"
+
+  hook task-done '{}' 'probe task'
+  eq done-title "$(q 2 '.elements[1].text')" "DONE"
+  eq done-detail "$(q 2 '.elements[2].text')" "probe task"
+  eq done-color "$(q 2 '.led_notification_color')" "#3FB950FF"
+  eq done-silent "$(ncalls)" "2"
+}
 test_record_is_local_only() {
   hook record "$(payload s1 Bash '{"command":"ls"}')"
   eq calls "$(ncalls)" "0"
@@ -281,7 +359,7 @@ test_codex_wait_alerts_after_delay() {
   eq immediate "$(ncalls)" "0"
   eq stdout "$OUT" ""
   sleep 3
-  eq delayed "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "Bash?|git push"
+  eq delayed "$(q 1 '.elements[1].text + "|" + .elements[2].text')" "AGENT  Bash?|git push"
 }
 
 test_codex_wait_cancelled_before_delay() {

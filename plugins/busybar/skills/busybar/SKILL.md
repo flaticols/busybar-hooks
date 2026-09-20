@@ -12,6 +12,7 @@ description: Set up and test BUSY Bar status hooks for coding agents, or wire th
 | turn finished | green `DONE` and the project name | no |
 | approval needed | amber `Bash?`, `Edit?`, … and the program or file name | yes |
 | question asked | amber `INPUT?` and the project name | yes |
+| task progress | blue `N/M` and the task title | no |
 
 ## Token
 
